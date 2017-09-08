@@ -1,5 +1,7 @@
-from .errors import MatrixRequestError
+import re
 from uuid import uuid4
+
+from .errors import MatrixRequestError
 
 
 class Room(object):
@@ -60,6 +62,24 @@ class Room(object):
         """
         return self.client.api.send_message(self.room_id, text)
 
+    def get_html_content(self, html, body=None, msgtype="m.text"):
+        return {
+            "body": body if body else re.sub('<[^<]+?>', '', html),
+            "msgtype": msgtype,
+            "format": "org.matrix.custom.html",
+            "formatted_body": html
+        }
+
+    def send_html(self, html, body=None, msgtype="m.text"):
+        """Send an html formatted message.
+
+        Args:
+            html (str): The html formatted message to be sent.
+            body (str): The body of the message to be sent (unformatted).
+        """
+        return self.client.api.send_message_event(
+            self.room_id, "m.room.message", self.get_html_content(html, body, msgtype))
+
     def set_account_data(self, type, account_data):
         return self.client.api.set_room_account_data(
             self.client.user_id, self.room_id, type, account_data)
@@ -85,6 +105,22 @@ class Room(object):
             text (str): The message to send
         """
         return self.client.api.send_emote(self.room_id, text)
+
+    def send_file(self, url, name, **fileinfo):
+        """ Send a pre-uploaded file to the room.
+        See http://matrix.org/docs/spec/r0.2.0/client_server.html#m-file for
+        fileinfo
+
+        Args:
+            url (str): The mxc url of the file.
+            name (str): The filename of the image.
+            fileinfo (): Extra information about the file
+        """
+
+        return self.client.api.send_content(
+            self.room_id, url, name, "m.file",
+            extra_information=fileinfo
+        )
 
     def send_notice(self, text):
         return self.client.api.send_notice(self.room_id, text)

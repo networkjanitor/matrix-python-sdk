@@ -59,7 +59,8 @@ class MatrixClient(object):
 
     """
 
-    def __init__(self, base_url, token=None, user_id=None, valid_cert_check=True):
+    def __init__(self, base_url, token=None, user_id=None,
+                 valid_cert_check=True, sync_filter_limit=20):
         """ Create a new Matrix Client object.
 
         Args:
@@ -90,7 +91,8 @@ class MatrixClient(object):
         self.ephemeral_listeners = []
 
         self.sync_token = None
-        self.sync_filter = None
+        self.sync_filter = '{ "room": { "timeline" : { "limit" : %i } } }' \
+            % sync_filter_limit
         self.sync_thread = None
         self.should_listen = False
 
@@ -112,13 +114,23 @@ class MatrixClient(object):
     def set_user_id(self, user_id):
         self.user_id = user_id
 
-    def register_with_password(self, username, password, limit=1):
+    def register_as_guest(self):
+        """ Register a guest account on this HS.
+        Note: HS must have guest registration enabled.
+        Returns:
+            str: Access Token
+        Raises:
+            MatrixRequestError
+        """
+        response = self.api.register(kind='guest')
+        return self._post_registration(response)
+
+    def register_with_password(self, username, password):
         """ Register for a new account on this HS.
 
         Args:
             username (str): Account username
             password (str): Account password
-            limit (int): Deprecated. How many messages to return when syncing.
 
         Returns:
             str: Access Token
@@ -127,13 +139,19 @@ class MatrixClient(object):
             MatrixRequestError
         """
         response = self.api.register(
-            "m.login.password", user=username, password=password
+            {
+                "auth": {"type": "m.login.dummy"},
+                "username": username,
+                "password": password
+            }
         )
+        return self._post_registration(response)
+
+    def _post_registration(self, response):
         self.user_id = response["user_id"]
         self.token = response["access_token"]
         self.hs = response["home_server"]
         self.api.token = self.token
-        self.sync_filter = '{ "room": { "timeline" : { "limit" : %i } } }' % limit
         self._sync()
         return self.token
 
@@ -304,7 +322,6 @@ class MatrixClient(object):
 
     def add_leave_listener(self, callback):
         """ Add a listener that will send a callback when the client has left a room.
-        an invite request.
 
         Args:
             callback (func(room_id, room)): Callback called when the client
@@ -322,12 +339,15 @@ class MatrixClient(object):
         """
         self._sync(timeout_ms)
 
-    def listen_forever(self, timeout_ms=30000):
+    def listen_forever(self, timeout_ms=30000, exception_handler=None):
         """ Keep listening for events forever.
 
         Args:
             timeout_ms (int): How long to poll the Home Server for before
                retrying.
+            exception_handler (func(exception)): Optional exception handler
+               function which can be used to handle exceptions in the caller
+               thread.
         """
         bad_sync_timeout = 5000
         self.should_listen = True
@@ -347,16 +367,24 @@ class MatrixClient(object):
                     raise e
             except Exception as e:
                 logger.exception("Exception thrown during sync")
+                if exception_handler is not None:
+                    exception_handler(e)
+                else:
+                    raise
 
-    def start_listener_thread(self, timeout_ms=30000):
+    def start_listener_thread(self, timeout_ms=30000, exception_handler=None):
         """ Start a listener thread to listen for events in the background.
 
         Args:
             timeout (int): How long to poll the Home Server for before
                retrying.
+            exception_handler (func(exception)): Optional exception handler
+               function which can be used to handle exceptions in the caller
+               thread.
         """
         try:
-            thread = Thread(target=self.listen_forever, args=(timeout_ms, ))
+            thread = Thread(target=self.listen_forever,
+                            args=(timeout_ms, exception_handler))
             thread.daemon = True
             self.sync_thread = thread
             self.should_listen = True
