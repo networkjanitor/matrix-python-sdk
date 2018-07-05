@@ -534,6 +534,55 @@ class MatrixHttpApi(object):
         return self.send_state_event(room_id, "m.room.topic", body,
                                      query_params=query_params)
 
+    def get_room_avatar(self, room_id, query_params={}):
+        """Perform GET /rooms/$room_id/state/m.room.avatar
+        Args:
+            room_id(str): The room ID
+            query_params: Extra parameters to be sent in the HTTP request,
+
+                These parameters are normally only used for application services.
+                Common values for ``query_params`` are:
+
+                | ts: timestamp for event
+                | user_id: user id for transaction.
+        """
+        return self._send("GET", "/rooms/" + room_id + "/state/m.room.avatar",
+                          query_params=query_params)
+
+    def set_room_avatar(self, room_id, url=None, info=None, thumb_url=None, thumb_info=None, query_params={}):
+        """Perform PUT /rooms/$room_id/state/m.room.avatar
+        Args:
+            room_id(str): The room ID
+            url(str): The url to the image
+            info(dict): Image info about the image referred with url
+            thumb_url(str): URL to the thumbnail of the location.
+            thumb_info(dict): Metadata about the thumbnail, type ImageInfo.
+            query_params: Extra parameters to be sent in the HTTP request,
+
+                These parameters are normally only used for application services.
+                Common values for ``query_params`` are:
+
+                | ts: timestamp for event
+                | user_id: user id for transaction.
+        """
+        body = {}
+
+        if not url or info or thumb_url or thumb_info:
+            raise ValueError("requires at least one of the following parameters to be set: "
+                             "url, info, thumb_url, thumb_info")
+
+        if url:
+            body["url"] = url
+        if info:
+            body['info'] = info
+        if thumb_url:
+            body["thumbnail_url"] = thumb_url
+        if thumb_info:
+            body["thumbnail_info"] = thumb_info
+
+        return self.send_state_event(room_id, "m.room.avatar", body,
+                                     query_params=query_params)
+
     def get_power_levels(self, room_id):
         """Perform GET /rooms/$room_id/state/m.room.power_levels
 
